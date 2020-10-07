@@ -181,7 +181,7 @@ void msystem::locateOutput() {
 	else {
 		string date = getMonthYear();
 
-		string dataOutDir_str = "/home/john/sim/output/" + date;
+		string dataOutDir_str = date;
 		char* a1 = new char[dataOutDir_str.length() + 1];
 		strcpy(a1,dataOutDir_str.c_str());
 
@@ -213,8 +213,6 @@ void msystem::locateOutput() {
 }
 
 void msystem::exportData() {
-	float currentTime = time;
-	dataFile.write(reinterpret_cast<const char *>(&currentTime), sizeof(float));
 	for (vector<molecule>::iterator mol = molecules->begin(); mol != molecules->end(); ++mol) {
 		for (vector<sphere>::iterator sp = (*mol).spheres.begin(); sp != (*mol).spheres.end(); ++sp) {
 			float r = sp->r;

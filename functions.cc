@@ -62,7 +62,7 @@ string getMonthYear() {
 
     static const string months[] = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"};
     const string str_month = months[month-1];
-    string str_year = static_cast<ostringstream*>( &(ostringstream() << year) )->str();
+    string str_year = to_string(year);
 
 
     string monthyear = str_month + str_year;
@@ -79,7 +79,7 @@ string getFileName(const char* dirName) {
 	ifstream myFile("./TEMP.txt");
 	int n;
 	myFile >> n;
-	string n_str = static_cast<ostringstream*>( &(ostringstream() << n) )->str();
+	string n_str = to_string(n);
 	system("rm ./TEMP.txt");
 
 	systemCall = ("mkdir " + dirName_str + "/sim" + n_str + " > /dev/null");

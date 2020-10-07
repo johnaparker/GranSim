@@ -21,9 +21,8 @@ int main() {
 	moleculeType triatomic(spheres);
 
 	molecule mol1(triatomic,Vector3d(5,5,3));
-	molecule mol2(triatomic,Vector3d(5,5,3));
-	molecule mols[] = {mol1,mol2};
-	vector<molecule> molecules;
+	molecule mol2(triatomic,Vector3d(5,2,3));
+	vector<molecule> molecules = {mol1, mol2};
 	
 
 
@@ -35,14 +34,14 @@ int main() {
 
 	dimensions sysDim(dim,vdim);
 
-	IO files("/home/john/sim/input/smaller.dat");
+	IO files("smaller.dat");
 
 	parameters param;
 	param.k_n = 2e8; param.k_t = 1500; param.k_static = 1800, param.cutoff = 0.1;
 	param.freq = 10;
 
-	timeline myTL(4);
-	msystem mysys(molecules, param,files, sysDim, myTL);
+	timeline myTL(.5);
+	msystem mysys(molecules, param, files, sysDim, myTL);
 
 	mysys.run(2.5e-6);
 }
