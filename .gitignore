@@ -1,5 +1,9 @@
+*.so
+*.egg-info
 *.o
 *.dat
 *.swp
 *.out
-gran
+
+build/
+__pycache__/
