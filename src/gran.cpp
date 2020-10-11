@@ -1,5 +1,7 @@
 #include "gran.hpp"
 #include <cmath>
+#include <iostream>
+#include <algorithm>
 
 GranSim::GranSim(const Matrix& position, const Array& radii, 
         const Array& mass, double young_mod, double friction, double damp_normal,
@@ -15,6 +17,15 @@ GranSim::GranSim(const Matrix& position, const Array& radii,
     rd3 = Matrix::Zero(Nparticles,2);
     rd4 = Matrix::Zero(Nparticles,2);
     force = Matrix::Zero(Nparticles,2);
+
+    voxel_size = 2*radii(0);
+
+    for (int i=0; i<Nparticles; i++) {
+        int ix = int(position(i,0)/voxel_size);
+        int jx = int(position(i,1)/voxel_size);
+        key_t key(ix,jx);
+        voxel_idx.push_back(key);
+    }
 }
 
 void GranSim::predict() {
@@ -35,6 +46,7 @@ void GranSim::correct() {
     const double c3 = 3.0/2.0/dt;
     const double c4 = 1.0/pow(dt,2);
 
+    #pragma omp parallel for
     for (int i=0; i<Nparticles; i++) {
         auto accel = force.row(i)/mass(i);
         auto corr = accel - rd2.row(i);
@@ -51,31 +63,46 @@ void GranSim::correct() {
 void GranSim::compute_force() {
     force = 0;
 
+    #pragma omp parallel for
     for (int i=0; i<Nparticles; i++) {
-        for (int j=i+1; j<Nparticles; j++) {
-            vec2 dr = position.row(i) - position.row(j);
-            bool condition = (dr.squaredNorm() < (radii(i) + radii(j))*(radii(i) + radii(j)));
+        int ix = int(position(i,0)/voxel_size);
+        int jx = int(position(i,1)/voxel_size);
+
+        for (int ix2=ix-1; ix2<ix+2; ix2++) {
+            for (int jx2=jx-1; jx2<jx+2; jx2++) {
+                key_t key(ix2,jx2);
+                auto loc = voxels.find(key);
+                if (loc == voxels.end()) continue;
+
+                for (int j: loc->second) {
+                    if (i == j) continue;
+
+                    vec2 dr = position.row(i) - position.row(j);
+                    bool condition = (dr.squaredNorm() < (radii(i) + radii(j))*(radii(i) + radii(j)));
 
 
-            if (condition) {
-                double dr_norm = dr.norm();
-                double overlap = radii(i) + radii(j) - dr_norm;
-                dr /= dr_norm;
-                vec2 dt(-dr(1), dr(0));
-                vec2 dv = velocity.row(i) - velocity.row(j);
+                    if (condition) {
+                        double dr_norm = dr.norm();
+                        double overlap = radii(i) + radii(j) - dr_norm;
+                        dr /= dr_norm;
+                        vec2 dt(-dr(1), dr(0));
+                        vec2 dv = velocity.row(i) - velocity.row(j);
 
-                double dv_n = -dr.dot(dv);
-                double dv_t = dt.dot(dv);
-                double reff = radii(i)*radii(j)/(radii(i) + radii(j));
-                double Fn_mag = std::max(0.0, sqrt(reff)*young_mod*sqrt(overlap)*(overlap + damp_normal*dv_n));
-                double Ft_mag = std::min(friction*Fn_mag, damp_tangent*std::abs(dv_t));
-                auto F = dr.array()*Fn_mag - dt.array()*sgn(dv_t)*Ft_mag;
-                force.row(i) += F;
-                force.row(j) -= F;
+                        double dv_n = -dr.dot(dv);
+                        double dv_t = dt.dot(dv);
+                        double reff = radii(i)*radii(j)/(radii(i) + radii(j));
+                        double Fn_mag = std::max(0.0, sqrt(reff)*young_mod*sqrt(overlap)*(overlap + damp_normal*dv_n));
+                        double Ft_mag = std::min(friction*Fn_mag, damp_tangent*std::abs(dv_t));
+                        auto F = dr.array()*Fn_mag - dt.array()*sgn(dv_t)*Ft_mag;
+                        force.row(i) += F;
+                        //force.row(j) -= F;
+                    }
+                }
             }
         }
     }
 
+    #pragma omp parallel for
     for (int i=0; i<Nparticles; i++) {
         force.row(i) += mass(i)*vec2(0, -9.8).array();
 
@@ -91,8 +118,39 @@ void GranSim::compute_force() {
     }
 }
 
+void GranSim::assign_voxels() {
+    for (int i=0; i<Nparticles; i++) {
+        int ix = int(position(i,0)/voxel_size);
+        int jx = int(position(i,1)/voxel_size);
+
+        key_t key(ix,jx);
+        key_t key_prev(voxel_idx[i]);
+        if (key == key_prev) {
+            continue;
+        }
+        else {
+            auto loc = voxels.find(key);
+            if (loc == voxels.end()) {
+                voxels.insert({{key, {i}}});
+            }
+            else {
+                loc->second.push_back(i);
+            }
+            
+            auto loc_prev = voxels.find(key_prev);
+            if (loc_prev != voxels.end()) {
+                auto& vec = loc_prev->second;
+                vec.erase(std::remove(vec.begin(), vec.end(), i), vec.end());
+            }
+
+            voxel_idx[i] = key;
+        }
+    }
+}
+
 void GranSim::step() {
     predict();
+    assign_voxels();
     compute_force();
     correct();
 }

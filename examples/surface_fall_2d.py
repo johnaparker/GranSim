@@ -4,7 +4,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from gransim import GranSim, animate_matplotlib
 
-Nparticles = 250
+plt.style.use('dark_background')
+Nparticles = 1000
 radii = np.array([.01]*Nparticles)
 mass = np.array([.01]*Nparticles)
 
@@ -14,7 +15,7 @@ for i in range(Nparticles):
     y = .1 + .03*(i//10)
     initial[i] = (x,y)
 
-Nsteps = 10000
+Nsteps = 15000
 sim = GranSim(position=initial,
               radii=radii,
               mass=mass,
@@ -33,5 +34,9 @@ for i in tqdm(range(Nsteps)):
 fig, ax = plt.subplots()
 colors = mpl.colors.TABLEAU_COLORS
 anim = animate_matplotlib(traj[::100], radii, colors)
+
+ax.axhspan(-.5, 0.8, color='black', hatch='//', zorder=0)
+ax.axhline(0, color='gray')
+ax.set_ylim([-.5,.8])
 
 plt.show()
