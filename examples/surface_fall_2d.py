@@ -38,5 +38,6 @@ anim = animate_matplotlib(traj[::100], radii, colors)
 ax.axhspan(-.5, 0.8, color='black', hatch='//', zorder=0)
 ax.axhline(0, color='gray')
 ax.set_ylim([-.5,.8])
+ax.axis('off')
 
 plt.show()

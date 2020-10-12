@@ -5,16 +5,17 @@
 #include <unordered_map>
 #include <tuple>
 #include <vector>
+#include <mutex>
 
 using Eigen::Ref;
-typedef std::tuple<int, int> key_t;
+typedef std::tuple<int, int> key_tt;
 
 template <typename T> int sgn(T val) {
     return (T(0) < val) - (val < T(0));
 }
 
-struct key_hash : public std::unary_function<key_t, std::size_t> {
-    std::size_t operator()(const key_t& k) const {
+struct key_hash : public std::unary_function<key_tt, std::size_t> {
+    std::size_t operator()(const key_tt& k) const {
         //return std::get<0>(k)*100 + std::get<1>(k);
         size_t h = (size_t(std::get<0>(k))<<32) + size_t(std::get<1>(k));
         h *= 1231231557ull;
@@ -55,9 +56,11 @@ class GranSim {
         double time;
         int Nparticles;
 
-        std::unordered_map<key_t, std::vector<int>, key_hash> voxels;
+        std::unordered_map<key_tt, std::vector<int>, key_hash> voxels;
         double voxel_size;
-        std::vector<key_t> voxel_idx;
+        std::vector<key_tt> voxel_idx;
+
+        std::mutex mtx;
 };
 
 #endif
