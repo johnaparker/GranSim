@@ -28,9 +28,11 @@ class GranSim {
     public:
         GranSim(const Matrix& position, const Array& radii, 
                 const Array& mass, double young_mod, double friction, 
-                double damp_normal, double damp_tangent, double dt);
+                double damp_normal, double damp_tangent, double dt,
+                const Matrix& vposition, const Array& vradii);
 
         void step();
+        void update_position(const Matrix& new_position);
 
     private:
         void predict();
@@ -40,9 +42,12 @@ class GranSim {
 
     public:
         Matrix position, velocity;
+        int Nparticles;
+        Array radii;
+        double time;
+        double dt;
 
     private:
-        Array radii;
         Array mass;
         double young_mod;
         double friction;
@@ -52,9 +57,7 @@ class GranSim {
         Matrix rd2, rd3, rd4;
         Matrix force;
 
-        double dt;
-        double time;
-        int Nparticles;
+        int Rparticles, Vparticles;
 
         std::unordered_map<key_tt, std::vector<int>, key_hash> voxels;
         double voxel_size;

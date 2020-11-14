@@ -10,6 +10,6 @@ using quat = Eigen::Quaterniond;
 using Array = Eigen::ArrayXd;
 using iArray = Eigen::ArrayXi;
 
-using Matrix = Eigen::Array<double,Eigen::Dynamic,2,Eigen::RowMajor>;
+using Matrix = Eigen::Array<double,Eigen::Dynamic,2,Eigen::Major>;
 
 #endif

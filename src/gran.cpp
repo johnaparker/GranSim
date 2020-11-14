@@ -3,20 +3,35 @@
 #include <iostream>
 #include <algorithm>
 
-GranSim::GranSim(const Matrix& position, const Array& radii, 
+GranSim::GranSim(const Matrix& rposition, const Array& rradii, 
         const Array& mass, double young_mod, double friction, double damp_normal,
-        double damp_tangent, double dt): position(position),
-        radii(radii), mass(mass), young_mod(young_mod), friction(friction),
+        double damp_tangent, double dt, const Matrix& vposition, const Array& vradii):
+        mass(mass), young_mod(young_mod), friction(friction),
         damp_normal(damp_normal), damp_tangent(damp_tangent), dt(dt) {
 
     time = 0;
-    Nparticles = position.rows();
+    Rparticles = rposition.rows();
+    Vparticles = vposition.rows();
+    Nparticles = Rparticles + Vparticles;
+
+    position = Matrix::Zero(Nparticles,2);
+    radii = Array::Zero(Nparticles);
+
+    for (int i=0; i <Rparticles; i++) {
+        position.row(i) = rposition.row(i);
+        radii(i) = rradii(i);
+    }
+    for (int i=0; i <Vparticles; i++) {
+        position.row(Rparticles+i) = vposition.row(i);
+        radii(Rparticles+i) = vradii(i);
+    }
 
     velocity = Matrix::Zero(Nparticles,2);
-    rd2 = Matrix::Zero(Nparticles,2);
-    rd3 = Matrix::Zero(Nparticles,2);
-    rd4 = Matrix::Zero(Nparticles,2);
     force = Matrix::Zero(Nparticles,2);
+
+    rd2 = Matrix::Zero(Rparticles,2);
+    rd3 = Matrix::Zero(Rparticles,2);
+    rd4 = Matrix::Zero(Rparticles,2);
 
     voxel_size = 2*radii(0);
 
@@ -25,6 +40,14 @@ GranSim::GranSim(const Matrix& position, const Array& radii,
         int jx = int(position(i,1)/voxel_size);
         key_tt key(ix,jx);
         voxel_idx.push_back(key);
+
+        auto loc = voxels.find(key);
+        if (loc == voxels.end()) {
+            voxels.insert({{key, {i}}});
+        }
+        else {
+            loc->second.push_back(i);
+        }
     }
 }
 
@@ -35,7 +58,7 @@ void GranSim::predict() {
     const double a4 = a3*dt/4.0;
 
     #pragma omp parallel for
-    for (int i=0; i<Nparticles; i++) {
+    for (int i=0; i<Rparticles; i++) {
         position.row(i) += a1*velocity.row(i) 
                          + a2*rd2.row(i)
                          + a3*rd3.row(i)
@@ -59,7 +82,7 @@ void GranSim::correct() {
     const double c4 = 1.0/pow(dt,2);
 
     #pragma omp parallel for
-    for (int i=0; i<Nparticles; i++) {
+    for (int i=0; i<Rparticles; i++) {
         auto accel = force.row(i)/mass(i);
         auto corr = accel - rd2.row(i);
         position.row(i) += c0*corr;
@@ -76,7 +99,7 @@ void GranSim::compute_force() {
     force = 0;
 
     #pragma omp parallel for
-    for (int i=0; i<Nparticles; i++) {
+    for (int i=0; i<Rparticles; i++) {
         int ix = int(position(i,0)/voxel_size);
         int jx = int(position(i,1)/voxel_size);
 
@@ -87,7 +110,7 @@ void GranSim::compute_force() {
                 if (loc == voxels.end()) continue;
 
                 for (int j: loc->second) {
-                    if (i <= j) continue;
+                    if (i >= j) continue;
 
                     vec2 dr = position.row(i) - position.row(j);
                     bool condition = (dr.squaredNorm() < (radii(i) + radii(j))*(radii(i) + radii(j)));
@@ -115,7 +138,7 @@ void GranSim::compute_force() {
     }
 
     #pragma omp parallel for
-    for (int i=0; i<Nparticles; i++) {
+    for (int i=0; i<Rparticles; i++) {
         force.row(i) += mass(i)*vec2(0, -9.8).array();
 
         double overlap = radii(i) - position(i,1);
@@ -165,4 +188,11 @@ void GranSim::step() {
     assign_voxels();
     compute_force();
     correct();
+}
+
+void GranSim::update_position(const Matrix& new_position) {
+    for (int i=0; i <Vparticles; i++) {
+        velocity.row(Rparticles+i) = (new_position.row(i) - position.row(Rparticles+i))/dt;
+        position.row(Rparticles+i) = new_position.row(i);
+    }
 }
