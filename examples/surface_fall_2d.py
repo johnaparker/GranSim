@@ -24,9 +24,11 @@ sim = GranSim(position=initial,
               damp_normal=0.01,
               damp_tangent=3.0,
               friction=0.5,
+              vposition=[[]],
+              vradii=[],
               dt=1e-4)
 
-traj = np.empty([Nsteps,Nparticles,2], dtype=float)
+traj = np.empty([Nsteps,Nparticles+1,2], dtype=float)
 
 for i in tqdm(range(Nsteps)):
     sim.step()
@@ -34,5 +36,3 @@ for i in tqdm(range(Nsteps)):
 
 colors = mpl.colors.TABLEAU_COLORS
 vdynamics.animate_2d(traj[::50], radii, colors)
-
-plt.show()
