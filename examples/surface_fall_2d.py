@@ -2,11 +2,10 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from gransim import GranSim, animate_matplotlib
+from gransim import granular_media_2d, animate_matplotlib
 import vdynamics
 
-plt.style.use('dark_background')
-Nparticles = 1000
+Nparticles = 3000
 radii = np.array([.01]*Nparticles)
 mass = np.array([.01]*Nparticles)
 
@@ -17,22 +16,25 @@ for i in range(Nparticles):
     initial[i] = (x,y)
 
 Nsteps = 10000
-sim = GranSim(position=initial,
+
+sim = granular_media_2d(dt=1e-4)
+sim.add_grains(position=initial,
               radii=radii,
               mass=mass,
-              young_mod=1.0e6,
-              damp_normal=0.01,
-              damp_tangent=3.0,
-              friction=0.5,
-              vposition=[[]],
-              vradii=[],
-              dt=1e-4)
+              young_mod=1.0e6*np.ones(Nparticles),
+              damp_normal=0.01*np.ones(Nparticles),
+              damp_tangent=3.0*np.ones(Nparticles),
+              friction=0.5*np.ones(Nparticles))
 
-traj = np.empty([Nsteps,Nparticles+1,2], dtype=float)
+sim.add_wall(point=[.6,-.5],
+             normal=[1,1])
+sim.add_wall(point=[.6,-.5],
+             normal=[-1,1])
+traj = np.empty([Nsteps,Nparticles,2], dtype=float)
 
 for i in tqdm(range(Nsteps)):
     sim.step()
     traj[i] = sim.position
 
 colors = mpl.colors.TABLEAU_COLORS
-vdynamics.animate_2d(traj[::50], radii, colors)
+vdynamics.animate_2d(traj[::50], radii, colors='gray', background_color='white', edge_color='k', linewidth=.1)

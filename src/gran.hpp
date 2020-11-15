@@ -29,48 +29,67 @@ struct key_hash : public std::unary_function<key_tt, std::size_t> {
     }
 };
 
-class GranSim {
+class Circle {
     public:
-        GranSim(py_arr position, py_arr rradii, 
-                py_arr _mass, double young_mod, double friction, 
-                double damp_normal, double damp_tangent, double dt,
-                py_arr vposition, py_arr vradii);
+        Circle(vec2 position, double radius, double mass, double young_mod, double friction, double damp_normal, double damp_tangent);
+
+
+    public:
+        vec2 position, velocity, rd2, rd3, rd4, force;
+        double radius, mass, young_mod, friction, damp_normal, damp_tangent;
+};
+
+class Wall2d {
+    public:
+        Wall2d(vec2 point, vec2 normal);
+
+    public:
+        vec2 point, normal, tangent;
+};
+
+void interact(Circle& c1, Circle& c2);
+void interact(Circle& c, const Wall2d& w);
+
+class granular_media_2d {
+    public:
+        granular_media_2d(double dt);
 
         void step();
-        void update_position(const Matrix& new_position);
         py::array_t<double> get_position() {
             auto result = py::array_t<double>({Nparticles,2});
             auto r = result.mutable_unchecked<2>();
-            for (int i=0; i<Nparticles; i++) {
-                r(i,0) = position[i](0);
-                r(i,1) = position[i](1);
+            for (int i=0; i<Rparticles; i++) {
+                auto& grain = d_grains[i];
+                r(i,0) = grain.position(0);
+                r(i,1) = grain.position(1);
             }
             return result;
         };
+
+        void add_wall(vec2 point, vec2 normal);
+        void add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
+        //void add_static_circles(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
+        //circle_collection add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
+        //circle_collection add_static_circles(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
+        //void update_position(const Matrix& new_position);
 
     private:
         void predict();
         void correct();
         void compute_force();
+        void initialize_voxels();
         void assign_voxels();
 
     public:
-        std::vector<vec2> position, velocity;
         int Nparticles;
-        std::vector<double> radii;
         double time;
         double dt;
+        vec2 gravity;
 
     private:
-        std::vector<double> mass;
-        double young_mod;
-        double friction;
-        double damp_normal;
-        double damp_tangent;
-
-        std::vector<vec2> rd2, rd3, rd4;
-        std::vector<vec2> force;
-
+        std::vector<Circle> d_grains;
+        std::vector<Circle> s_grains;
+        std::vector<Wall2d> walls;
         int Rparticles, Vparticles;
 
         std::unordered_map<key_tt, std::vector<int>, key_hash> voxels;

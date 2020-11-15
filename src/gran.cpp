@@ -3,50 +3,159 @@
 #include <iostream>
 #include <algorithm>
 
-GranSim::GranSim(py_arr rposition, py_arr rradii, 
-        py_arr _mass, double young_mod, double friction, double damp_normal,
-        double damp_tangent, double dt, py_arr vposition, py_arr vradii):
-        young_mod(young_mod), friction(friction),
-        damp_normal(damp_normal), damp_tangent(damp_tangent), dt(dt) {
+Circle::Circle(vec2 position, double radius, double mass, double young_mod, double friction, double damp_normal, double damp_tangent): position(position), radius(radius), mass(mass), young_mod(young_mod), friction(friction), damp_normal(damp_normal), damp_tangent(damp_tangent) {
 
+    velocity = vec2(0,0);
+    rd2 = vec2(0,0);
+    rd3 = vec2(0,0);
+    rd4 = vec2(0,0);
+    force = vec2(0,0);
+}
+
+Wall2d::Wall2d(vec2 point, vec2 normal): point(point), normal(normal) {
+    normal.normalize();
+    tangent = vec2(normal(1), normal(0));
+}
+
+granular_media_2d::granular_media_2d(double dt): dt(dt) {
     time = 0;
+    Nparticles = 0;
+    Rparticles = 0;
+    Vparticles = 0;
 
-    auto rposition_ = rposition.mutable_unchecked<2>();
-    auto rradii_ = rradii.mutable_unchecked<1>();
-    auto mass_ = _mass.mutable_unchecked<1>();
-    auto vposition_ = vposition.mutable_unchecked<2>();
-    auto vradii_ = vradii.mutable_unchecked<1>();
+    gravity = vec2(0,-9.8);
+}
 
-    Rparticles = rposition_.shape(0);
-    Vparticles = vposition_.shape(0);
-    std::cout << vposition_.size() << std::endl;
-    Nparticles = Rparticles + Vparticles;
+void granular_media_2d::add_wall(vec2 point, vec2 normal) {
+    walls.push_back(Wall2d(point, normal));
+}
 
-    for (int i=0; i <Rparticles; i++) {
-        position.push_back(vec2(rposition_(i,0), rposition_(i,1)));
-        radii.push_back(rradii_(i));
+void granular_media_2d::add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent) {
+    auto position_ = position.unchecked<2>();
+    auto radii_ = radii.unchecked<1>();
+    auto mass_ = mass.unchecked<1>();
+    auto young_mod_ = young_mod.unchecked<1>();
+    auto friction_ = friction.unchecked<1>();
+    auto damp_normal_ = damp_normal.unchecked<1>();
+    auto damp_tangent_ = damp_tangent.unchecked<1>();
 
-        rd2.push_back(vec2(0,0));
-        rd3.push_back(vec2(0,0));
-        rd4.push_back(vec2(0,0));
+    const int Nnew = position.shape(0);
+    Rparticles += Nnew;
+    Nparticles += Nnew;
+
+    for (int i=0; i < Nnew; i++) {
+        Circle circle(vec2(position_(i,0), position_(i,1)),
+                       radii_(i), mass_(i), young_mod_(i), friction_(i),
+                       damp_normal_(i), damp_tangent_(i));
+
+        d_grains.push_back(circle);
     }
 
-    for (int i=0; i <Vparticles; i++) {
-        position.push_back(vec2(vposition_(i,0), vposition_(i,1)));
-        radii.push_back(vradii_(i));
+    initialize_voxels();
+}
+
+void granular_media_2d::predict() {
+	const double a1 = dt;
+    const double a2 = a1*dt/2.0;
+    const double a3 = a2*dt/3.0;
+    const double a4 = a3*dt/4.0;
+
+    #pragma omp parallel for
+    for (int i=0; i<Rparticles; i++) {
+        auto& grain = d_grains[i];
+
+        grain.position += a1*grain.velocity 
+                          + a2*grain.rd2
+                          + a3*grain.rd3
+                          + a4*grain.rd4;
+
+        grain.velocity += a1*grain.rd2
+                     + a2*grain.rd3
+                     + a4*grain.rd4;
+
+        grain.rd2 += a1*grain.rd3
+                + a2*grain.rd4;
+
+        grain.rd3 += a1*grain.rd4;
+    }
+}
+
+void granular_media_2d::correct() {
+    const double c0 = 19.0/180.0*pow(dt,2);
+    const double c1 = 3.0/8.0*dt;
+    const double c3 = 3.0/2.0/dt;
+    const double c4 = 1.0/pow(dt,2);
+
+    #pragma omp parallel for
+    for (int i=0; i<Rparticles; i++) {
+        auto& grain = d_grains[i];
+
+        auto accel = grain.force/grain.mass;
+        auto corr = accel - grain.rd2;
+        grain.position += c0*corr;
+        grain.velocity += c1*corr;
+        grain.rd2 = accel;
+        grain.rd2 += c3*corr;
+        grain.rd4 += c4*corr;
     }
 
-    for (int i=0; i<Nparticles; i++) {
-        velocity.push_back(vec2(0,0));
-        force.push_back(vec2(0,0));
-        mass.push_back(mass_(i));
+    time += dt;
+}
+
+void granular_media_2d::compute_force() {
+    #pragma omp parallel for
+    for (int i=0; i<Rparticles; i++) {
+        d_grains[i].force = vec2(0,0);
     }
 
-    voxel_size = 2*radii[0];
+    #pragma omp parallel for
+    for (int i=0; i<Rparticles; i++) {
+        auto& g1 = d_grains[i];
+        int ix = int(g1.position(0)/voxel_size);
+        int jx = int(g1.position(1)/voxel_size);
 
-    for (int i=0; i<Nparticles; i++) {
-        int ix = int(position[i][0]/voxel_size);
-        int jx = int(position[i][1]/voxel_size);
+        for (int ix2=ix-1; ix2<ix+2; ix2++) {
+            for (int jx2=jx-1; jx2<jx+2; jx2++) {
+                key_tt key(ix2,jx2);
+                auto loc = voxels.find(key);
+                if (loc == voxels.end()) continue;
+
+                for (int j: loc->second) {
+                    if (i >= j) continue;
+
+                    auto& g2 = d_grains[j];
+                    vec2 dr = g1.position - g2.position;
+                    bool condition = (dr.squaredNorm() < (g1.radius + g2.radius)*(g1.radius + g2.radius));
+
+                    if (condition) {
+                        interact(g1, g2);
+                    }
+                }
+            }
+        }
+    }
+
+    #pragma omp parallel for
+    for (int i=0; i<Rparticles; i++) {
+        auto& grain = d_grains[i];
+
+        // gravity
+        grain.force += grain.mass*gravity;
+
+        // wall collisions
+        for (const auto& wall: walls)
+            interact(grain, wall);
+    }
+}
+
+void granular_media_2d::initialize_voxels() {
+    voxel_size = 2*d_grains[0].radius;
+
+    for (int i=0; i<Rparticles; i++) {
+        const auto& grain = d_grains[i];
+
+        int ix = int(grain.position(0)/voxel_size);
+        int jx = int(grain.position(1)/voxel_size);
         key_tt key(ix,jx);
         voxel_idx.push_back(key);
 
@@ -60,113 +169,12 @@ GranSim::GranSim(py_arr rposition, py_arr rradii,
     }
 }
 
-void GranSim::predict() {
-	const double a1 = dt;
-    const double a2 = a1*dt/2.0;
-    const double a3 = a2*dt/3.0;
-    const double a4 = a3*dt/4.0;
-
-    #pragma omp parallel for
+void granular_media_2d::assign_voxels() {
     for (int i=0; i<Rparticles; i++) {
-        position[i] += a1*velocity[i] 
-                          + a2*rd2[i]
-                          + a3*rd3[i]
-                          + a4*rd4[i];
+        auto& grain = d_grains[i];
 
-        velocity[i] += a1*rd2[i]
-                     + a2*rd3[i]
-                     + a4*rd4[i];
-
-        rd2[i] += a1*rd3[i]
-                + a2*rd4[i];
-
-        rd3[i] += a1*rd4[i];
-    }
-}
-
-void GranSim::correct() {
-    const double c0 = 19.0/180.0*pow(dt,2);
-    const double c1 = 3.0/8.0*dt;
-    const double c3 = 3.0/2.0/dt;
-    const double c4 = 1.0/pow(dt,2);
-
-    #pragma omp parallel for
-    for (int i=0; i<Rparticles; i++) {
-        auto accel = force[i]/mass[i];
-        auto corr = accel - rd2[i];
-        position[i] += c0*corr;
-        velocity[i] += c1*corr;
-        rd2[i] = accel;
-        rd2[i] += c3*corr;
-        rd4[i] += c4*corr;
-    }
-
-    time += dt;
-}
-
-void GranSim::compute_force() {
-    for (int i=0; i<Nparticles; i++) {
-        force[i] = vec2(0,0);
-    }
-
-    #pragma omp parallel for
-    for (int i=0; i<Rparticles; i++) {
-        int ix = int(position[i](0)/voxel_size);
-        int jx = int(position[i](1)/voxel_size);
-
-        for (int ix2=ix-1; ix2<ix+2; ix2++) {
-            for (int jx2=jx-1; jx2<jx+2; jx2++) {
-                key_tt key(ix2,jx2);
-                auto loc = voxels.find(key);
-                if (loc == voxels.end()) continue;
-
-                for (int j: loc->second) {
-                    if (i >= j) continue;
-
-                    vec2 dr = position[i] - position[j];
-                    bool condition = (dr.squaredNorm() < (radii[i] + radii[j])*(radii[i] + radii[j]));
-
-                    if (condition) {
-                        double dr_norm = dr.norm();
-                        double overlap = radii[i] + radii[j] - dr_norm;
-                        dr /= dr_norm;
-                        vec2 dt(-dr(1), dr(0));
-                        vec2 dv = velocity[i] - velocity[j];
-
-                        double dv_n = -dr.dot(dv);
-                        double dv_t = dt.dot(dv);
-                        double reff = radii[i]*radii[j]/(radii[i] + radii[j]);
-                        double Fn_mag = std::max(0.0, sqrt(reff)*young_mod*sqrt(overlap)*(overlap + damp_normal*dv_n));
-                        double Ft_mag = std::min(friction*Fn_mag, damp_tangent*std::abs(dv_t));
-                        auto F = dr*Fn_mag - dt*sgn(dv_t)*Ft_mag;
-                        force[i] += F;
-                        force[j] -= F;
-                    }
-                }
-            }
-        }
-    }
-
-    #pragma omp parallel for
-    for (int i=0; i<Rparticles; i++) {
-        force[i] += mass[i]*vec2(0, -9.8);
-
-        double overlap = radii[i] - position[i](1);
-        if (overlap > 0) {
-            double dv_n = -velocity[i](1);
-            double dv_t = velocity[i](0);
-            double reff = radii[i];
-            double Fn_mag = std::max(0.0, sqrt(reff)*young_mod*sqrt(overlap)*(overlap + damp_normal*dv_n));
-            double Ft_mag = std::min(friction*Fn_mag, damp_tangent*std::abs(dv_t));
-            force[i] += vec2(-sgn(dv_t)*Ft_mag, Fn_mag);
-        }
-    }
-}
-
-void GranSim::assign_voxels() {
-    for (int i=0; i<Nparticles; i++) {
-        int ix = int(position[i](0)/voxel_size);
-        int jx = int(position[i](1)/voxel_size);
+        int ix = int(grain.position(0)/voxel_size);
+        int jx = int(grain.position(1)/voxel_size);
 
         key_tt key(ix,jx);
         key_tt key_prev(voxel_idx[i]);
@@ -193,17 +201,40 @@ void GranSim::assign_voxels() {
     }
 }
 
-void GranSim::step() {
+void granular_media_2d::step() {
     predict();
     assign_voxels();
     compute_force();
     correct();
 }
 
-void GranSim::update_position(const Matrix& new_position) {
-    for (int i=0; i <Vparticles; i++) {
-        vec2 new_pos(new_position(i,0), new_position(i,1));
-        velocity[Rparticles+i] = (new_pos - position[Rparticles+i])/dt;
-        position[Rparticles+i] = new_pos;
+void interact(Circle& c1, Circle& c2) {
+    vec2 dr = c1.position - c2.position;
+    double dr_norm = dr.norm();
+    double overlap = c1.radius + c2.radius - dr_norm;
+    dr /= dr_norm;
+    vec2 dt(-dr(1), dr(0));
+    vec2 dv = c1.velocity - c2.velocity;
+
+    double dv_n = -dr.dot(dv);
+    double dv_t = dt.dot(dv);
+    double reff = c1.radius*c2.radius/(c1.radius + c2.radius);
+    double Fn_mag = std::max(0.0, sqrt(reff)*c1.young_mod*sqrt(overlap)*(overlap + c1.damp_normal*dv_n));
+    double Ft_mag = std::min(c1.friction*Fn_mag, c1.damp_tangent*std::abs(dv_t));
+    auto F = dr*Fn_mag - dt*sgn(dv_t)*Ft_mag;
+
+    c1.force += F;
+    c2.force -= F;
+}
+
+void interact(Circle& c, const Wall2d& w) {
+    double overlap = c.radius - (c.position - w.point).dot(w.normal);
+    if (overlap > 0) {
+        double dv_n = -c.velocity.dot(w.normal);
+        double dv_t = c.velocity.dot(w.tangent);
+        double reff = c.radius;
+        double Fn_mag = std::max(0.0, sqrt(reff)*c.young_mod*sqrt(overlap)*(overlap + c.damp_normal*dv_n));
+        double Ft_mag = std::min(c.friction*Fn_mag, c.damp_tangent*std::abs(dv_t));
+        c.force += w.normal*Fn_mag - w.tangent*Ft_mag*sgn(dv_t);
     }
 }

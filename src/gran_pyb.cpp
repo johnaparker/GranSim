@@ -8,17 +8,14 @@ namespace py = pybind11;
 using namespace pybind11::literals;
 
 void bind_gran_sim(py::module &m) {
-    py::class_<GranSim>(m, "GranSim")
-        .def(py::init<py_arr, py_arr, 
-            py_arr, double, double, double, double, double, py_arr, py_arr>(), 
-            py::arg("position"), py::arg("radii"), py::arg("mass"),
-            py::arg("young_mod"), py::arg("friction"), py::arg("damp_normal"),
-            py::arg("damp_tangent"), py::arg("dt"), py::arg("vposition"), py::arg("vradii"))
-        .def("step", &GranSim::step)
-        .def("update_position", &GranSim::update_position)
-        .def_property_readonly("position", &GranSim::get_position)
-        .def_readonly("radii", &GranSim::radii)
-        .def_readonly("Nparticles", &GranSim::Nparticles)
-        .def_readonly("time", &GranSim::time)
-        .def_readonly("dt", &GranSim::dt);
+    py::class_<granular_media_2d>(m, "granular_media_2d")
+        .def(py::init<double>(), "dt"_a)
+        .def("add_wall", &granular_media_2d::add_wall, "point"_a, "normal"_a)
+        .def("add_grains", &granular_media_2d::add_grains, "position"_a, "radii"_a, "mass"_a, "young_mod"_a, "friction"_a, "damp_normal"_a, "damp_tangent"_a)
+        .def("step", &granular_media_2d::step)
+        .def_property_readonly("position", &granular_media_2d::get_position)
+        .def_readwrite("gravity", &granular_media_2d::gravity)
+        .def_readonly("Nparticles", &granular_media_2d::Nparticles)
+        .def_readonly("time", &granular_media_2d::time)
+        .def_readonly("dt", &granular_media_2d::dt);
 }
