@@ -58,8 +58,8 @@ class granular_media_2d {
         py::array_t<double> get_position() {
             auto result = py::array_t<double>({Nparticles,2});
             auto r = result.mutable_unchecked<2>();
-            for (int i=0; i<Rparticles; i++) {
-                auto& grain = d_grains[i];
+            for (int i=0; i<Nparticles; i++) {
+                const auto& grain = (i < Rparticles) ? d_grains[i] : s_grains[i-Rparticles];
                 r(i,0) = grain.position(0);
                 r(i,1) = grain.position(1);
             }
@@ -68,7 +68,7 @@ class granular_media_2d {
 
         void add_wall(vec2 point, vec2 normal);
         void add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
-        //void add_static_circles(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
+        void add_static_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
         //circle_collection add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
         //circle_collection add_static_circles(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent);
         //void update_position(const Matrix& new_position);

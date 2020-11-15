@@ -54,6 +54,30 @@ void granular_media_2d::add_grains(py_arr position, py_arr radii, py_arr mass, p
     initialize_voxels();
 }
 
+void granular_media_2d::add_static_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent) {
+    auto position_ = position.unchecked<2>();
+    auto radii_ = radii.unchecked<1>();
+    auto mass_ = mass.unchecked<1>();
+    auto young_mod_ = young_mod.unchecked<1>();
+    auto friction_ = friction.unchecked<1>();
+    auto damp_normal_ = damp_normal.unchecked<1>();
+    auto damp_tangent_ = damp_tangent.unchecked<1>();
+
+    const int Nnew = position.shape(0);
+    Vparticles += Nnew;
+    Nparticles += Nnew;
+
+    for (int i=0; i < Nnew; i++) {
+        Circle circle(vec2(position_(i,0), position_(i,1)),
+                       radii_(i), mass_(i), young_mod_(i), friction_(i),
+                       damp_normal_(i), damp_tangent_(i));
+
+        s_grains.push_back(circle);
+    }
+
+    initialize_voxels();
+}
+
 void granular_media_2d::predict() {
 	const double a1 = dt;
     const double a2 = a1*dt/2.0;
@@ -123,7 +147,7 @@ void granular_media_2d::compute_force() {
                 for (int j: loc->second) {
                     if (i >= j) continue;
 
-                    auto& g2 = d_grains[j];
+                    auto& g2 = (j < Rparticles) ? d_grains[j] : s_grains[j-Rparticles];
                     vec2 dr = g1.position - g2.position;
                     bool condition = (dr.squaredNorm() < (g1.radius + g2.radius)*(g1.radius + g2.radius));
 
@@ -149,10 +173,12 @@ void granular_media_2d::compute_force() {
 }
 
 void granular_media_2d::initialize_voxels() {
+    voxels.clear();
+    voxel_idx.clear();
     voxel_size = 2*d_grains[0].radius;
 
-    for (int i=0; i<Rparticles; i++) {
-        const auto& grain = d_grains[i];
+    for (int i=0; i<Nparticles; i++) {
+        const auto& grain = (i < Rparticles) ? d_grains[i] : s_grains[i-Rparticles];
 
         int ix = int(grain.position(0)/voxel_size);
         int jx = int(grain.position(1)/voxel_size);
@@ -170,8 +196,8 @@ void granular_media_2d::initialize_voxels() {
 }
 
 void granular_media_2d::assign_voxels() {
-    for (int i=0; i<Rparticles; i++) {
-        auto& grain = d_grains[i];
+    for (int i=0; i<Nparticles; i++) {
+        const auto& grain = (i < Rparticles) ? d_grains[i] : s_grains[i-Rparticles];
 
         int ix = int(grain.position(0)/voxel_size);
         int jx = int(grain.position(1)/voxel_size);
