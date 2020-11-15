@@ -10,12 +10,13 @@ find_package(OpenMP REQUIRED)
 add_subdirectory(pybind11)
 
 set(SOURCES ${SOURCES} 
-    src/gran.cpp
+    src/gran2d.cpp
+    src/geometry_2d.cpp
 )
 
 set(BINDINGS
     src/main_pyb.cpp
-    src/gran_pyb.cpp
+    src/gran2d_pyb.cpp
 )
 
 add_library(cpp MODULE "${SOURCES}" "${BINDINGS}")

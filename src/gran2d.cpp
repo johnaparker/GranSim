@@ -1,21 +1,7 @@
-#include "gran.hpp"
+#include "gran2d.hpp"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
-
-Circle::Circle(vec2 position, double radius, double mass, double young_mod, double friction, double damp_normal, double damp_tangent): position(position), radius(radius), mass(mass), young_mod(young_mod), friction(friction), damp_normal(damp_normal), damp_tangent(damp_tangent) {
-
-    velocity = vec2(0,0);
-    rd2 = vec2(0,0);
-    rd3 = vec2(0,0);
-    rd4 = vec2(0,0);
-    force = vec2(0,0);
-}
-
-Wall2d::Wall2d(vec2 point, vec2 normal): point(point), normal(normal) {
-    normal.normalize();
-    tangent = vec2(normal(1), normal(0));
-}
 
 granular_media_2d::granular_media_2d(double dt): dt(dt) {
     time = 0;
@@ -76,6 +62,19 @@ void granular_media_2d::add_static_grains(py_arr position, py_arr radii, py_arr 
     }
 
     initialize_voxels();
+}
+
+py::array_t<double> granular_media_2d::get_position() {
+    auto result = py::array_t<double>({Nparticles,2});
+    auto r = result.mutable_unchecked<2>();
+
+    #pragma omp parallel for
+    for (int i=0; i<Nparticles; i++) {
+        const auto& grain = (i < Rparticles) ? d_grains[i] : s_grains[i-Rparticles];
+        r(i,0) = grain.position(0);
+        r(i,1) = grain.position(1);
+    }
+    return result;
 }
 
 void granular_media_2d::predict() {
@@ -232,35 +231,4 @@ void granular_media_2d::step() {
     assign_voxels();
     compute_force();
     correct();
-}
-
-void interact(Circle& c1, Circle& c2) {
-    vec2 dr = c1.position - c2.position;
-    double dr_norm = dr.norm();
-    double overlap = c1.radius + c2.radius - dr_norm;
-    dr /= dr_norm;
-    vec2 dt(-dr(1), dr(0));
-    vec2 dv = c1.velocity - c2.velocity;
-
-    double dv_n = -dr.dot(dv);
-    double dv_t = dt.dot(dv);
-    double reff = c1.radius*c2.radius/(c1.radius + c2.radius);
-    double Fn_mag = std::max(0.0, sqrt(reff)*c1.young_mod*sqrt(overlap)*(overlap + c1.damp_normal*dv_n));
-    double Ft_mag = std::min(c1.friction*Fn_mag, c1.damp_tangent*std::abs(dv_t));
-    auto F = dr*Fn_mag - dt*sgn(dv_t)*Ft_mag;
-
-    c1.force += F;
-    c2.force -= F;
-}
-
-void interact(Circle& c, const Wall2d& w) {
-    double overlap = c.radius - (c.position - w.point).dot(w.normal);
-    if (overlap > 0) {
-        double dv_n = -c.velocity.dot(w.normal);
-        double dv_t = c.velocity.dot(w.tangent);
-        double reff = c.radius;
-        double Fn_mag = std::max(0.0, sqrt(reff)*c.young_mod*sqrt(overlap)*(overlap + c.damp_normal*dv_n));
-        double Ft_mag = std::min(c.friction*Fn_mag, c.damp_tangent*std::abs(dv_t));
-        c.force += w.normal*Fn_mag - w.tangent*Ft_mag*sgn(dv_t);
-    }
 }
