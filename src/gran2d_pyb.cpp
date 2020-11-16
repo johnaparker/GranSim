@@ -7,7 +7,7 @@
 namespace py = pybind11;
 using namespace pybind11::literals;
 
-void bind_gran_sim(py::module &m) {
+void bind_gran2d(py::module &m) {
     py::class_<granular_media_2d>(m, "granular_media_2d")
         .def(py::init<double>(), "dt"_a)
         .def("add_wall", &granular_media_2d::add_wall, "point"_a, "normal"_a)

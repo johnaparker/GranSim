@@ -1,22 +1,22 @@
-#include "gran2d.hpp"
+#include "gran3d.hpp"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
 
-granular_media_2d::granular_media_2d(double dt): dt(dt) {
+granular_media::granular_media(double dt): dt(dt) {
     time = 0;
     Nparticles = 0;
     Rparticles = 0;
     Vparticles = 0;
 
-    gravity = vec2(0,-9.8);
+    gravity = vec3(0, 0, -9.8);
 }
 
-void granular_media_2d::add_wall(vec2 point, vec2 normal) {
-    walls.push_back(Wall2d(point, normal));
+void granular_media::add_wall(vec3 point, vec3 normal) {
+    walls.push_back(Wall(point, normal));
 }
 
-void granular_media_2d::add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent) {
+void granular_media::add_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent) {
     auto position_ = position.unchecked<2>();
     auto radii_ = radii.unchecked<1>();
     auto mass_ = mass.unchecked<1>();
@@ -30,17 +30,17 @@ void granular_media_2d::add_grains(py_arr position, py_arr radii, py_arr mass, p
     Nparticles += Nnew;
 
     for (int i=0; i < Nnew; i++) {
-        Circle circle(vec2(position_(i,0), position_(i,1)),
+        Sphere sphere(vec3(position_(i,0), position_(i,1), position_(i,2)),
                        radii_(i), mass_(i), young_mod_(i), friction_(i),
                        damp_normal_(i), damp_tangent_(i));
 
-        d_grains.push_back(circle);
+        d_grains.push_back(sphere);
     }
 
     initialize_voxels();
 }
 
-void granular_media_2d::add_static_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent) {
+void granular_media::add_static_grains(py_arr position, py_arr radii, py_arr mass, py_arr young_mod, py_arr friction, py_arr damp_normal, py_arr damp_tangent) {
     auto position_ = position.unchecked<2>();
     auto radii_ = radii.unchecked<1>();
     auto mass_ = mass.unchecked<1>();
@@ -54,18 +54,18 @@ void granular_media_2d::add_static_grains(py_arr position, py_arr radii, py_arr 
     Nparticles += Nnew;
 
     for (int i=0; i < Nnew; i++) {
-        Circle circle(vec2(position_(i,0), position_(i,1)),
+        Sphere sphere(vec3(position_(i,0), position_(i,1), position_(i,2)),
                        radii_(i), mass_(i), young_mod_(i), friction_(i),
                        damp_normal_(i), damp_tangent_(i));
 
-        s_grains.push_back(circle);
+        s_grains.push_back(sphere);
     }
 
     initialize_voxels();
 }
 
-py::array_t<double> granular_media_2d::get_position() {
-    auto result = py::array_t<double>({Nparticles,2});
+py::array_t<double> granular_media::get_position() {
+    auto result = py::array_t<double>({Nparticles,3});
     auto r = result.mutable_unchecked<2>();
 
     #pragma omp parallel for
@@ -73,11 +73,12 @@ py::array_t<double> granular_media_2d::get_position() {
         const auto& grain = (i < Rparticles) ? d_grains[i] : s_grains[i-Rparticles];
         r(i,0) = grain.position(0);
         r(i,1) = grain.position(1);
+        r(i,2) = grain.position(2);
     }
     return result;
 }
 
-void granular_media_2d::predict() {
+void granular_media::predict() {
 	const double a1 = dt;
     const double a2 = a1*dt/2.0;
     const double a3 = a2*dt/3.0;
@@ -103,7 +104,7 @@ void granular_media_2d::predict() {
     }
 }
 
-void granular_media_2d::correct() {
+void granular_media::correct() {
     const double c0 = 19.0/180.0*pow(dt,2);
     const double c1 = 3.0/8.0*dt;
     const double c3 = 3.0/2.0/dt;
@@ -125,10 +126,10 @@ void granular_media_2d::correct() {
     time += dt;
 }
 
-void granular_media_2d::compute_force() {
+void granular_media::compute_force() {
     #pragma omp parallel for
     for (int i=0; i<Rparticles; i++) {
-        d_grains[i].force = vec2::Zero();
+        d_grains[i].force = vec3::Zero();
     }
 
     #pragma omp parallel for
@@ -136,22 +137,25 @@ void granular_media_2d::compute_force() {
         auto& g1 = d_grains[i];
         int ix = int(g1.position(0)/voxel_size);
         int jx = int(g1.position(1)/voxel_size);
+        int kx = int(g1.position(2)/voxel_size);
 
         for (int ix2=ix-1; ix2<ix+2; ix2++) {
             for (int jx2=jx-1; jx2<jx+2; jx2++) {
-                key_tt key(ix2,jx2);
-                auto loc = voxels.find(key);
-                if (loc == voxels.end()) continue;
+                for (int kx2=kx-1; kx2<kx+2; kx2++) {
+                    key_tt key(ix2, jx2, kx2);
+                    auto loc = voxels.find(key);
+                    if (loc == voxels.end()) continue;
 
-                for (int j: loc->second) {
-                    if (i >= j) continue;
+                    for (int j: loc->second) {
+                        if (i >= j) continue;
 
-                    auto& g2 = (j < Rparticles) ? d_grains[j] : s_grains[j-Rparticles];
-                    vec2 dr = g1.position - g2.position;
-                    bool condition = (dr.squaredNorm() < (g1.radius + g2.radius)*(g1.radius + g2.radius));
+                        auto& g2 = (j < Rparticles) ? d_grains[j] : s_grains[j-Rparticles];
+                        vec3 dr = g1.position - g2.position;
+                        bool condition = (dr.squaredNorm() < (g1.radius + g2.radius)*(g1.radius + g2.radius));
 
-                    if (condition) {
-                        interact(g1, g2);
+                        if (condition) {
+                            interact(g1, g2);
+                        }
                     }
                 }
             }
@@ -171,7 +175,7 @@ void granular_media_2d::compute_force() {
     }
 }
 
-void granular_media_2d::initialize_voxels() {
+void granular_media::initialize_voxels() {
     voxels.clear();
     voxel_idx.clear();
     voxel_size = 2*d_grains[0].radius;
@@ -181,7 +185,8 @@ void granular_media_2d::initialize_voxels() {
 
         int ix = int(grain.position(0)/voxel_size);
         int jx = int(grain.position(1)/voxel_size);
-        key_tt key(ix,jx);
+        int kx = int(grain.position(2)/voxel_size);
+        key_tt key(ix,jx,kx);
         voxel_idx.push_back(key);
 
         auto loc = voxels.find(key);
@@ -194,14 +199,15 @@ void granular_media_2d::initialize_voxels() {
     }
 }
 
-void granular_media_2d::assign_voxels() {
+void granular_media::assign_voxels() {
     for (int i=0; i<Nparticles; i++) {
         const auto& grain = (i < Rparticles) ? d_grains[i] : s_grains[i-Rparticles];
 
         int ix = int(grain.position(0)/voxel_size);
         int jx = int(grain.position(1)/voxel_size);
+        int kx = int(grain.position(2)/voxel_size);
 
-        key_tt key(ix,jx);
+        key_tt key(ix,jx,kx);
         key_tt key_prev(voxel_idx[i]);
         if (key == key_prev) {
             continue;
@@ -226,7 +232,7 @@ void granular_media_2d::assign_voxels() {
     }
 }
 
-void granular_media_2d::step() {
+void granular_media::step() {
     predict();
     assign_voxels();
     compute_force();

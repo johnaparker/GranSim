@@ -3,7 +3,8 @@
 
 namespace py = pybind11;
 
-void bind_gran_sim(py::module &);
+void bind_gran2d(py::module &);
+void bind_gran3d(py::module &);
 
 PYBIND11_MODULE(cpp, m) {
     m.doc() = R"pbdoc(
@@ -16,7 +17,6 @@ PYBIND11_MODULE(cpp, m) {
            :toctree: _generate
     )pbdoc";
 
-    // special submodule
-    //py::module special_m = m.def_submodule("special", "special functions module");
-    bind_gran_sim(m);
+    bind_gran2d(m);
+    bind_gran3d(m);
 }

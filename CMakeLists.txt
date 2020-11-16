@@ -11,12 +11,15 @@ add_subdirectory(pybind11)
 
 set(SOURCES ${SOURCES} 
     src/gran2d.cpp
+    src/gran3d.cpp
     src/geometry_2d.cpp
+    src/geometry_3d.cpp
 )
 
 set(BINDINGS
     src/main_pyb.cpp
     src/gran2d_pyb.cpp
+    src/gran3d_pyb.cpp
 )
 
 add_library(cpp MODULE "${SOURCES}" "${BINDINGS}")
