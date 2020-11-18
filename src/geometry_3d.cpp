@@ -31,8 +31,8 @@ void interact(Sphere& s1, Sphere& s2) {
     double friction = std::min(s1.friction, s2.friction);
 
     double Fn_mag = std::max(0.0, sqrt(reff)*young_mod*sqrt(overlap)*(overlap + damp_normal*dv_n));
-    double Ft_mag = std::min(friction*Fn_mag, damp_tangent*dv_t_norm);
-    auto F = dr*Fn_mag - Ft_mag*dv_t/dv_t_norm;
+    double Ft_mag = std::min(friction*Fn_mag/dv_t_norm, damp_tangent);
+    auto F = dr*Fn_mag - Ft_mag*dv_t;
 
     s1.force += F;
     s2.force -= F;
@@ -47,7 +47,7 @@ void interact(Sphere& s, const Wall& w) {
 
         vec3 dv_t = s.velocity - dv_n*w.normal;
         double dv_t_norm = dv_t.norm();
-        double Ft_mag = std::min(s.friction*Fn_mag, s.damp_tangent*dv_t_norm);
-        s.force += w.normal*Fn_mag - Ft_mag*dv_t/dv_t_norm;
+        double Ft_mag = std::min(s.friction*Fn_mag/dv_t_norm, s.damp_tangent);
+        s.force += w.normal*Fn_mag - Ft_mag*dv_t;
     }
 }
